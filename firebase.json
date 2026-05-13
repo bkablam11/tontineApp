@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"warigbe-app","appId":"1:806151428631:android:b7fc40bc6e08ac35669a52","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"warigbe-app","configurations":{"android":"1:806151428631:android:b7fc40bc6e08ac35669a52","ios":"1:806151428631:ios:e379af24c8595848669a52","macos":"1:806151428631:ios:e379af24c8595848669a52","web":"1:806151428631:web:94210f151b527380669a52","windows":"1:806151428631:web:547e8bf9463cd67a669a52"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "warigbe-app",
+          "appId": "1:806151428631:android:b7fc40bc6e08ac35669a52",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "warigbe-app",
+          "configurations": {
+            "android": "1:806151428631:android:b7fc40bc6e08ac35669a52",
+            "ios": "1:806151428631:ios:e379af24c8595848669a52",
+            "macos": "1:806151428631:ios:e379af24c8595848669a52",
+            "web": "1:806151428631:web:94210f151b527380669a52",
+            "windows": "1:806151428631:web:547e8bf9463cd67a669a52"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

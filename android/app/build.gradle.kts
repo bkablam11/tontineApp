@@ -11,11 +11,13 @@ plugins {
 android {
     namespace = "com.example.tontineapp"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // --- AJOUTE CETTE LIGNE ---
+        isCoreLibraryDesugaringEnabled = true 
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+
     }
 
     kotlinOptions {
@@ -33,6 +35,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true 
     }
 
     buildTypes {
@@ -46,4 +49,14 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // --- AJOUTE CETTE LIGNE ---
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    
+    // ... tes autres dépendances existantes
+
+    // Tes autres dépendances (ne touche pas au reste)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
 }
