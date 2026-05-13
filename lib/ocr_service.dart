@@ -11,9 +11,6 @@ class OCRService {
     String fullText = recognizedText.text;
     textRecognizer.close();
 
-    // Nettoyage global pour faciliter la recherche (on garde tout sur une ligne virtuelle)
-    String cleanText = fullText.replaceAll('\n', '  ');
-
     // --- EXTRACTION DES TÉLÉPHONES (On cherche tous les numéros 07, 05, 01) ---
     // Cette regex cherche des blocs de 10 chiffres avec ou sans espaces
     Iterable<RegExpMatch> phoneMatches = RegExp(
