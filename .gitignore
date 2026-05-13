@@ -1,0 +1,30 @@
+# Fichiers Flutter/Dart de base
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Fichiers de configuration IDE
+.idea/
+.vscode/
+*.iml
+
+# --- SÉCURITÉ : CONFIGURATION FIREBASE (À NE PAS PUBLIER) ---
+# Ces fichiers contiennent tes clés API et ton ID de projet
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart
+
+# --- SÉCURITÉ : CLÉS DE SIGNATURE ANDROID ---
+*.keystore
+*.jks
+*.p12
+*.key
+android/key.properties
+
+# Fichiers systèmes
+.DS_Store
+Thumbs.db
