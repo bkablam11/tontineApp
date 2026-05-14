@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // Détection Web
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -8,11 +9,11 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:intl/intl.dart';
 import 'package:image/image.dart' as img;
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show File;
 import 'dart:typed_data';
 import 'firebase_options.dart';
 
-// --- CONSTANTES & DESIGN SYSTEM ---
+// --- CONSTANTES & DESIGN SYSTEM V12 ---
 const List<Map<String, String>> membersList = [
   {
     'name': 'Biigy',
@@ -48,6 +49,7 @@ const List<Map<String, String>> membersList = [
 ];
 
 const double kTargetAmount = 50000.0;
+const double kGlobalTarget = 250000.0;
 const kIndigo = Color(0xFF4F46E5);
 const kEmerald = Color(0xFF10B981);
 const kSlateBg = Color(0xFFF8FAFC);
@@ -60,7 +62,7 @@ Map<String, String>? currentUserData;
 Future<void> _logActivity(String message, String type) async {
   await FirebaseFirestore.instance.collection('activities').add({
     'message': message,
-    'type': type, // 'payment', 'validation', 'delay', 'rejection'
+    'type': type,
     'timestamp': FieldValue.serverTimestamp(),
   });
 }
@@ -109,7 +111,7 @@ class WariGbeApp extends StatelessWidget {
   }
 }
 
-// --- NAVIGATION ---
+// --- NAVIGATION PRINCIPALE ---
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
   @override
@@ -131,7 +133,7 @@ class _MainNavigationState extends State<MainNavigation> {
       const DashboardScreen(),
       const ReceiptHomePage(),
       if (isController) const AdminHistoryScreen(),
-      const ActivityFeedScreen(), // Histo accessible à tous
+      const ActivityFeedScreen(),
     ];
 
     return Scaffold(
@@ -167,7 +169,7 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- ÉCRAN 1 : DASHBOARD ---
+// --- ÉCRAN 1 : DASHBOARD DYNAMIQUE ---
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
@@ -349,7 +351,7 @@ class DashboardScreen extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: (total / 250000).clamp(0.0, 1.0),
+              value: (total / kGlobalTarget).clamp(0.0, 1.0),
               minHeight: 8,
               backgroundColor: kSlateBg,
               valueColor: const AlwaysStoppedAnimation<Color>(kIndigo),
@@ -585,7 +587,7 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// --- ÉCRAN 2 : SCANNER ---
+// --- ÉCRAN 2 : SCANNER & OCR (GÈRE LE WEB) ---
 class ReceiptHomePage extends StatefulWidget {
   const ReceiptHomePage({super.key});
   @override
@@ -594,13 +596,14 @@ class ReceiptHomePage extends StatefulWidget {
 
 class _ReceiptHomePageState extends State<ReceiptHomePage> {
   String? _currentImagePath;
+  Uint8List? _webImageBytes; // Pour le stockage Web
   final _issueDateController = TextEditingController();
   final _typeController = TextEditingController();
   final _senderController = TextEditingController();
   final _idController = TextEditingController();
   final _amountController = TextEditingController();
   final _recipientController = TextEditingController();
-  String _status = "Prêt à scanner un reçu...";
+  String _status = "Scanner un reçu...";
   bool _isProcessing = false;
 
   void _clear() {
@@ -612,44 +615,66 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
     _recipientController.clear();
     setState(() {
       _currentImagePath = null;
+      _webImageBytes = null;
       _status = "Prêt.";
     });
   }
 
   Future<void> _pickAndProcess() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
-    if (result != null && result.files.single.path != null) {
-      _currentImagePath = result.files.single.path;
-      setState(() {
-        _isProcessing = true;
-        _status = "Analyse intelligente...";
-      });
-      final data = await OCRService.extractData(_currentImagePath!);
-      setState(() {
-        _issueDateController.text = data["issue_date"]!;
-        _typeController.text = data["type"]!;
-        _senderController.text = data["sender"]!;
-        _idController.text = data["transaction_id"]!;
-        _amountController.text = data["amount"]!;
-        _recipientController.text = data["recipient"]!;
-        _status = "✅ Vérifiez les informations.";
-        _isProcessing = false;
-      });
+    try {
+      FilePickerResult? result = await FilePicker.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (result != null) {
+        if (kIsWeb) {
+          setState(() {
+            _webImageBytes = result.files.single.bytes;
+            _status = "Mode Web : Remplissage manuel requis.";
+          });
+        } else {
+          _currentImagePath = result.files.single.path;
+          setState(() {
+            _isProcessing = true;
+            _status = "Analyse intelligente...";
+          });
+          final data = await OCRService.extractData(_currentImagePath!);
+          setState(() {
+            _issueDateController.text = data["issue_date"]!;
+            _typeController.text = data["type"]!;
+            _senderController.text = data["sender"]!;
+            _idController.text = data["transaction_id"]!;
+            _amountController.text = data["amount"]!;
+            _recipientController.text = data["recipient"]!;
+            _status = "✅ Vérifiez les informations.";
+            _isProcessing = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Erreur sélection : $e");
     }
   }
 
   Future<void> _save() async {
-    if (currentUserData == null ||
-        _amountController.text.isEmpty ||
-        _currentImagePath == null)
-      return;
+    if (currentUserData == null || _amountController.text.isEmpty) return;
+    if (!kIsWeb && _currentImagePath == null) return;
+    if (kIsWeb && _webImageBytes == null) return;
+
     setState(() => _isProcessing = true);
     try {
-      File file = File(_currentImagePath!);
-      Uint8List bytes = await file.readAsBytes();
-      img.Image? image = img.decodeImage(bytes);
-      img.Image resized = img.copyResize(image!, width: 800);
-      String base64Img = base64Encode(img.encodeJpg(resized, quality: 70));
+      String base64Img = "";
+      img.Image? decoded;
+      if (kIsWeb) {
+        decoded = img.decodeImage(_webImageBytes!);
+      } else {
+        decoded = img.decodeImage(await File(_currentImagePath!).readAsBytes());
+      }
+
+      if (decoded != null) {
+        img.Image resized = img.copyResize(decoded, width: 800);
+        base64Img = base64Encode(img.encodeJpg(resized, quality: 70));
+      }
 
       int amount =
           int.tryParse(
@@ -676,7 +701,7 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
       if (mainNav != null) mainNav.changeTab(0);
       _clear();
     } catch (e) {
-      debugPrint("Erreur: $e");
+      debugPrint("Erreur sauvegarde: $e");
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -812,8 +837,8 @@ class AdminHistoryScreen extends StatelessWidget {
           backgroundColor: Colors.white,
           elevation: 0,
           title: const Text(
-            "CONTRÔLE",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+            "CONTRÔLE V12",
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
           ),
           bottom: const TabBar(
             labelColor: kIndigo,
@@ -852,8 +877,11 @@ class AdminHistoryScreen extends StatelessWidget {
             final id = docs[index].id;
             return Card(
               margin: const EdgeInsets.only(bottom: 25),
+              elevation: 0,
+              color: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(24),
+                side: const BorderSide(color: kSlateBorder),
               ),
               child: Column(
                 children: [
@@ -864,17 +892,19 @@ class AdminHistoryScreen extends StatelessWidget {
                       ),
                       child: Image.memory(
                         base64Decode(data['imageRaw']),
-                        height: 300,
+                        height: 350,
                         width: double.infinity,
                         fit: BoxFit.contain,
                         color: kDark,
-                        colorBlendMode: BlendMode.dstOver,
                       ),
                     ),
                   ListTile(
                     title: Text(
                       data['userName'] ?? "",
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
                     subtitle: Text(
                       "${data['amount']} F - ID: ${data['transactionId']}",
@@ -922,7 +952,8 @@ class AdminHistoryScreen extends StatelessWidget {
         if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return const Center(child: Text("Aucun retard."));
+        if (docs.isEmpty)
+          return const Center(child: Text("Aucun retard signalé."));
         return ListView.builder(
           padding: const EdgeInsets.all(20),
           itemCount: docs.length,
@@ -961,17 +992,16 @@ class AdminHistoryScreen extends StatelessWidget {
   }
 }
 
-// --- ÉCRAN 4 : FIL D'ACTUALITÉ (HISTO) ---
+// --- ÉCRAN 4 : FIL D'ACTUALITÉ ---
 class ActivityFeedScreen extends StatelessWidget {
   const ActivityFeedScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kSlateBg,
       appBar: AppBar(
         title: const Text(
-          "FIL D'ACTUALITÉ",
+          "FIL D'ACTUALITÉ V12",
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
@@ -1053,7 +1083,10 @@ class LoginScreen extends StatelessWidget {
 
   Future<void> _signIn(BuildContext context) async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        clientId:
+            '806151428631-b4u4add9uk5umc9c6o483efe2r6mbbvm.apps.googleusercontent.com', // WEB Client ID
+      );
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return;
       final GoogleSignInAuthentication googleAuth =
@@ -1143,7 +1176,7 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-// --- SERVICE OCR ---
+// --- SERVICE OCR (MOBILE UNIQUEMENT) ---
 class OCRService {
   static Future<Map<String, String>> extractData(String path) async {
     final input = InputImage.fromFilePath(path);
