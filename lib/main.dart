@@ -32,7 +32,7 @@ const List<Map<String, String>> membersList = [
   {
     'name': 'Maguid',
     'role': 'controller',
-    'email': 'maguidouattara@gmail.com',
+    'email': 'bkablam20@gmail.com',
     'init': 'MA',
   },
   {
