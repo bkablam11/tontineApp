@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // Détection Web
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -13,7 +13,7 @@ import 'dart:io' show File;
 import 'dart:typed_data';
 import 'firebase_options.dart';
 
-// --- CONSTANTES & DESIGN SYSTEM V12 ---
+// --- CONSTANTES & DESIGN SYSTEM  ---
 const List<Map<String, String>> membersList = [
   {
     'name': 'Biigy',
@@ -120,7 +120,6 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-
   void changeTab(int index) {
     setState(() => _currentIndex = index);
   }
@@ -128,7 +127,6 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     bool isController = currentUserData?['role'] == 'controller';
-
     final List<Widget> screens = [
       const DashboardScreen(),
       const ReceiptHomePage(),
@@ -169,7 +167,7 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- ÉCRAN 1 : DASHBOARD DYNAMIQUE ---
+// --- ÉCRAN 1 : DASHBOARD ---
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
@@ -266,14 +264,14 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 ...membersList.map((m) {
-                  final int validated = memberSums[m['name']] ?? 0;
-                  final int rest = (kTargetAmount - validated).toInt();
-                  int percent = ((validated / kTargetAmount) * 100).toInt();
+                  final int val = memberSums[m['name']] ?? 0;
+                  final int rest = (kTargetAmount - val).toInt();
+                  int percent = ((val / kTargetAmount) * 100).toInt();
                   return _buildMemberRow(
                     m['init']!,
                     m['name']!,
                     percent,
-                    validated,
+                    val,
                     rest < 0 ? 0 : rest,
                     f,
                   );
@@ -587,7 +585,7 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// --- ÉCRAN 2 : SCANNER & OCR (GÈRE LE WEB) ---
+// --- ÉCRAN 2 : SCANNER & OCR ---
 class ReceiptHomePage extends StatefulWidget {
   const ReceiptHomePage({super.key});
   @override
@@ -596,11 +594,11 @@ class ReceiptHomePage extends StatefulWidget {
 
 class _ReceiptHomePageState extends State<ReceiptHomePage> {
   String? _currentImagePath;
-  Uint8List? _webImageBytes; // Pour le stockage Web
+  Uint8List? _webImageBytes;
   final _issueDateController = TextEditingController();
-  final _typeController = TextEditingController();
+  // final _typeController = TextEditingController();
   final _senderController = TextEditingController();
-  final _idController = TextEditingController();
+  // final _idController = TextEditingController();
   final _amountController = TextEditingController();
   final _recipientController = TextEditingController();
   String _status = "Scanner un reçu...";
@@ -608,9 +606,9 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
 
   void _clear() {
     _issueDateController.clear();
-    _typeController.clear();
+    // _typeController.clear();
     _senderController.clear();
-    _idController.clear();
+    //_idController.clear();
     _amountController.clear();
     _recipientController.clear();
     setState(() {
@@ -630,7 +628,7 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
         if (kIsWeb) {
           setState(() {
             _webImageBytes = result.files.single.bytes;
-            _status = "Mode Web : Remplissage manuel requis.";
+            _status = "Mode Web : Remplissage manuel.";
           });
         } else {
           _currentImagePath = result.files.single.path;
@@ -641,12 +639,12 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
           final data = await OCRService.extractData(_currentImagePath!);
           setState(() {
             _issueDateController.text = data["issue_date"]!;
-            _typeController.text = data["type"]!;
+            //_typeController.text = data["type"]!;
             _senderController.text = data["sender"]!;
-            _idController.text = data["transaction_id"]!;
+            //_idController.text = data["transaction_id"]!;
             _amountController.text = data["amount"]!;
             _recipientController.text = data["recipient"]!;
-            _status = "✅ Vérifiez les informations.";
+            _status = "✅ Vérifiez et enregistrez.";
             _isProcessing = false;
           });
         }
@@ -658,35 +656,29 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
 
   Future<void> _save() async {
     if (currentUserData == null || _amountController.text.isEmpty) return;
-    if (!kIsWeb && _currentImagePath == null) return;
-    if (kIsWeb && _webImageBytes == null) return;
+    Uint8List? bytes = kIsWeb
+        ? _webImageBytes
+        : (_currentImagePath != null
+              ? await File(_currentImagePath!).readAsBytes()
+              : null);
+    if (bytes == null) return;
 
     setState(() => _isProcessing = true);
     try {
-      String base64Img = "";
-      img.Image? decoded;
-      if (kIsWeb) {
-        decoded = img.decodeImage(_webImageBytes!);
-      } else {
-        decoded = img.decodeImage(await File(_currentImagePath!).readAsBytes());
-      }
-
-      if (decoded != null) {
-        img.Image resized = img.copyResize(decoded, width: 800);
-        base64Img = base64Encode(img.encodeJpg(resized, quality: 70));
-      }
+      img.Image? decoded = img.decodeImage(bytes);
+      img.Image resized = img.copyResize(decoded!, width: 800);
+      String base64Img = base64Encode(img.encodeJpg(resized, quality: 70));
 
       int amount =
           int.tryParse(
             _amountController.text.replaceAll(RegExp(r'[^0-9]'), ''),
           ) ??
           0;
-
       await FirebaseFirestore.instance.collection('contributions').add({
         'userId': FirebaseAuth.instance.currentUser?.uid,
         'userName': currentUserData!['name'],
         'amount': amount,
-        'transactionId': _idController.text,
+        //'transactionId': _idController.text,
         'imageRaw': base64Img,
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
@@ -696,9 +688,7 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
         "${currentUserData!['name']} a envoyé un reçu de $amount F.",
         "payment",
       );
-
-      final mainNav = context.findAncestorStateOfType<_MainNavigationState>();
-      if (mainNav != null) mainNav.changeTab(0);
+      context.findAncestorStateOfType<_MainNavigationState>()?.changeTab(0);
       _clear();
     } catch (e) {
       debugPrint("Erreur sauvegarde: $e");
@@ -765,9 +755,9 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
             ),
             const SizedBox(height: 32),
             _buildInp(_issueDateController, "DATE ÉMISSION"),
-            _buildInp(_typeController, "OPÉRATION"),
+            //_buildInp(_typeController, "OPÉRATION"),
             _buildInp(_senderController, "EXPÉDITEUR"),
-            _buildInp(_idController, "N° TRANSACTION"),
+            //_buildInp(_idController, "N° TRANSACTION"),
             _buildInp(_amountController, "MONTANT (CFA)"),
             _buildInp(_recipientController, "BÉNÉFICIAIRE"),
             const SizedBox(height: 32),
@@ -823,9 +813,35 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
   }
 }
 
-// --- ÉCRAN 3 : ADMIN (VALIDATION) ---
+// --- ÉCRAN 3 : ADMIN (VALIDATION AVEC ZOOM) ---
 class AdminHistoryScreen extends StatelessWidget {
   const AdminHistoryScreen({super.key});
+
+  void _showZoom(BuildContext context, String base64) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black.withOpacity(0.9),
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                child: Image.memory(base64Decode(base64), fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -837,12 +853,11 @@ class AdminHistoryScreen extends StatelessWidget {
           backgroundColor: Colors.white,
           elevation: 0,
           title: const Text(
-            "CONTRÔLE V12",
+            "CONTRÔLE ",
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
           ),
           bottom: const TabBar(
             labelColor: kIndigo,
-            unselectedLabelColor: Colors.grey,
             indicatorColor: kIndigo,
             tabs: [
               Tab(text: "REÇUS"),
@@ -851,13 +866,13 @@ class AdminHistoryScreen extends StatelessWidget {
           ),
         ),
         body: TabBarView(
-          children: [_buildContributionsTab(), _buildDelaysTab()],
+          children: [_buildContributionsTab(context), _buildDelaysTab()],
         ),
       ),
     );
   }
 
-  Widget _buildContributionsTab() {
+  Widget _buildContributionsTab(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('contributions')
@@ -886,29 +901,29 @@ class AdminHistoryScreen extends StatelessWidget {
               child: Column(
                 children: [
                   if (data['imageRaw'] != null)
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      child: Image.memory(
-                        base64Decode(data['imageRaw']),
-                        height: 350,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                        color: kDark,
+                    GestureDetector(
+                      onTap: () => _showZoom(context, data['imageRaw']),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                        child: Container(
+                          height: 250,
+                          width: double.infinity,
+                          color: kDark,
+                          child: Image.memory(
+                            base64Decode(data['imageRaw']),
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
                     ),
                   ListTile(
                     title: Text(
                       data['userName'] ?? "",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
-                    subtitle: Text(
-                      "${data['amount']} F - ID: ${data['transactionId']}",
-                    ),
+                    subtitle: Text("${data['amount']} F"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -952,8 +967,7 @@ class AdminHistoryScreen extends StatelessWidget {
         if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty)
-          return const Center(child: Text("Aucun retard signalé."));
+        if (docs.isEmpty) return const Center(child: Text("Aucun retard."));
         return ListView.builder(
           padding: const EdgeInsets.all(20),
           itemCount: docs.length,
@@ -1001,11 +1015,10 @@ class ActivityFeedScreen extends StatelessWidget {
       backgroundColor: kSlateBg,
       appBar: AppBar(
         title: const Text(
-          "FIL D'ACTUALITÉ V12",
+          "FIL D'ACTUALITÉ ",
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
-        backgroundColor: kSlateBg,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -1017,8 +1030,6 @@ class ActivityFeedScreen extends StatelessWidget {
           if (!snapshot.hasData)
             return const Center(child: CircularProgressIndicator());
           final logs = snapshot.data!.docs;
-          if (logs.isEmpty)
-            return const Center(child: Text("Aucune activité pour le moment."));
           return ListView.builder(
             padding: const EdgeInsets.all(20),
             itemCount: logs.length,
@@ -1085,7 +1096,7 @@ class LoginScreen extends StatelessWidget {
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn(
         clientId:
-            '806151428631-b4u4add9uk5umc9c6o483efe2r6mbbvm.apps.googleusercontent.com', // WEB Client ID
+            '806151428631-b4u4add9uk5umc9c6o483efe2r6mbbvm.apps.googleusercontent.com',
       );
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return;
@@ -1157,7 +1168,6 @@ class LoginScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                     side: const BorderSide(color: kSlateBorder),
                   ),
-                  elevation: 0,
                 ),
               ),
               if (error != null)
@@ -1176,7 +1186,7 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-// --- SERVICE OCR (MOBILE UNIQUEMENT) ---
+// --- SERVICE OCR (MOBILE) ---
 class OCRService {
   static Future<Map<String, String>> extractData(String path) async {
     final input = InputImage.fromFilePath(path);
@@ -1184,16 +1194,13 @@ class OCRService {
     final recognized = await recognizer.processImage(input);
     String text = recognized.text;
     recognizer.close();
-
-    Iterable<RegExpMatch> allNumbers = RegExp(
+    Iterable<RegExpMatch> phones = RegExp(
       r"(?:225)?\s?(0[157]\d{8})",
     ).allMatches(text);
-    List<String> validPhones = [];
-    for (var match in allNumbers) {
-      String phone = match.group(1)!;
-      if (!validPhones.contains(phone)) validPhones.add(phone);
+    List<String> pList = [];
+    for (var m in phones) {
+      if (!pList.contains(m.group(1)!)) pList.add(m.group(1)!);
     }
-
     String amount =
         RegExp(
           r"(\d{3,})\s*FCFA",
@@ -1207,34 +1214,34 @@ class OCRService {
             caseSensitive: false,
           ).firstMatch(text)?.group(1) ??
           "";
-
-    String transactionID =
+    String transID =
         RegExp(
           r"((?:PP|CO)\d{6}\.\d{4}\.[A-Z]\d+)",
           caseSensitive: false,
         ).firstMatch(text)?.group(1) ??
         "";
-    String dateValue =
+    String dateVal =
         RegExp(
           r"(\d{2}-\d{2}-\d{4}\s?,\s?\d{2}:\d{2})",
         ).firstMatch(text)?.group(0) ??
         "";
-
     String sender = "";
     String recipient = "";
-    if (validPhones.length >= 2) {
-      recipient = validPhones[0];
-      sender = validPhones[1];
-    } else if (validPhones.length == 1) {
-      sender = validPhones[0];
+    if (pList.length >= 2) {
+      recipient = pList[0];
+      sender = pList[1];
+    } else if (pList.isNotEmpty) {
+      sender = pList[0];
     }
-
     return {
-      "issue_date": dateValue,
+      "issue_date": dateVal,
       "type": text.contains("P2P") ? "Transfert P2P" : "Transfert d'argent",
       "sender": sender,
-      "transaction_id": transactionID.toUpperCase(),
-      "transaction_date": dateValue,
+      "transaction_id": transID
+          .toUpperCase()
+          .replaceAll(' ', '')
+          .replaceAll(',', '.'),
+      "transaction_date": dateVal,
       "amount": amount.replaceAll(' ', ''),
       "recipient": recipient,
     };
