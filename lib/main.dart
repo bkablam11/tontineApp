@@ -12,7 +12,7 @@ import 'package:image/image.dart'
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data'; // Pour Uint8List
-import 'notification_service.dart';
+// import 'notification_service.dart'; // TODO: Notifications feature - to be implemented later
 
 // --- CONSTANTES & DESIGN SYSTEM ---
 const List<Map<String, String>> membersList = [
@@ -38,7 +38,7 @@ const List<Map<String, String>> membersList = [
   {
     'name': 'Blanchard',
     'role': 'member',
-    'email': 'bkablam20@gmail.com',
+    'email': 'bkablam11@gmail.com',
     'init': 'BL',
   },
 ];
@@ -56,8 +56,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // --- AJOUTE ÇA ---
-  await NotificationService.init();
+  // TODO: Notifications feature - to be implemented later
+  // await NotificationService.init();
 
   runApp(const WariGbeApp());
 }
@@ -717,11 +717,11 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // --- AJOUTE CETTE LIGNE ICI ---
-      await NotificationService.showInstantNotification(
-        "Reçu bien envoyé ! ",
-        "Ta cotisation a été transmise à Maguid pour validation.",
-      );
+      // TODO: Notifications feature - to be implemented later
+      // await NotificationService.showInstantNotification(
+      //   "Reçu bien envoyé ! ",
+      //   "Ta cotisation a été transmise à Maguid pour validation.",
+      // );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1041,13 +1041,14 @@ class AdminHistoryScreen extends StatelessWidget {
     FirebaseFirestore.instance.collection('contributions').doc(id).update({
       'status': status,
       'updatedAt': FieldValue.serverTimestamp(),
-    }); // --- AJOUTE CE BLOC ICI ---
-    String titre = status == 'validated' ? "Félicitations ! " : "Reçu Refusé ";
-    String message = status == 'validated'
-        ? "Le paiement a été validé avec succès."
-        : "Le reçu ne semble pas conforme. Recommencez.";
-
-    await NotificationService.showInstantNotification(titre, message);
+    });
+    // TODO: Notifications feature - to be implemented later
+    // String titre = status == 'validated' ? "Félicitations ! " : "Reçu Refusé ";
+    // String message = status == 'validated'
+    //     ? "Le paiement a été validé avec succès."
+    //     : "Le reçu ne semble pas conforme. Recommencez.";
+    //
+    // await NotificationService.showInstantNotification(titre, message);
   }
 }
 

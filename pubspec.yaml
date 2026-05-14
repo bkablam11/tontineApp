@@ -41,9 +41,9 @@ dependencies:
   google_sign_in: ^6.2.1
   firebase_storage: ^13.4.0
   image: ^4.8.0
-  firebase_messaging: ^16.2.1
-  flutter_local_notifications: ^20.1.0
-  timezone: ^0.10.1
+  # firebase_messaging: ^16.2.1  # TODO: Notifications feature - to be implemented later
+  # flutter_local_notifications: ^20.1.0  # TODO: Notifications feature - to be implemented later
+  # timezone: ^0.10.1  # TODO: Notifications feature - to be implemented later
 
 dev_dependencies:
   flutter_test:
