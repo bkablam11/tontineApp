@@ -6,13 +6,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:intl/intl.dart';
-import 'firebase_options.dart';
-import 'package:image/image.dart'
-    as img; // Ajoute ce package : flutter pub add image
+import 'package:image/image.dart' as img;
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data'; // Pour Uint8List
-// import 'notification_service.dart'; // TODO: Notifications feature - to be implemented later
+import 'dart:typed_data';
+import 'firebase_options.dart';
 
 // --- CONSTANTES & DESIGN SYSTEM ---
 const List<Map<String, String>> membersList = [
@@ -22,7 +20,12 @@ const List<Map<String, String>> membersList = [
     'email': 'akaekuegnan@gmail.com',
     'init': 'BI',
   },
-  {'name': 'Marco', 'role': 'member', 'email': 'marco@v12.com', 'init': 'MA'},
+  {
+    'name': 'Marco',
+    'role': 'member',
+    'email': 'marcoeloye@gmail.com',
+    'init': 'MA',
+  },
   {
     'name': 'Israël',
     'role': 'member',
@@ -32,7 +35,8 @@ const List<Map<String, String>> membersList = [
   {
     'name': 'Maguid',
     'role': 'controller',
-    'email': 'maguidouattara@gmail.com',
+    'email':
+        'bkablam20@gmail.com', //maguidouattara@gmail.com bkablam20@gmail.com
     'init': 'MA',
   },
   {
@@ -52,13 +56,18 @@ const kDark = Color(0xFF0F172A);
 
 Map<String, String>? currentUserData;
 
+// --- FONCTION GLOBALE POUR LE JOURNAL D'ACTIVITÉ ---
+Future<void> _logActivity(String message, String type) async {
+  await FirebaseFirestore.instance.collection('activities').add({
+    'message': message,
+    'type': type, // 'payment', 'validation', 'delay', 'rejection'
+    'timestamp': FieldValue.serverTimestamp(),
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  // TODO: Notifications feature - to be implemented later
-  // await NotificationService.init();
-
   runApp(const WariGbeApp());
 }
 
@@ -110,11 +119,8 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  // --- AJOUTE CETTE MÉTHODE POUR PERMETTRE LE CHANGEMENT D'ONGLET ---
   void changeTab(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+    setState(() => _currentIndex = index);
   }
 
   @override
@@ -125,8 +131,7 @@ class _MainNavigationState extends State<MainNavigation> {
       const DashboardScreen(),
       const ReceiptHomePage(),
       if (isController) const AdminHistoryScreen(),
-      if (!isController)
-        const Center(child: Text("Historique personnel bientôt disponible")),
+      const ActivityFeedScreen(), // Histo accessible à tous
     ];
 
     return Scaffold(
@@ -135,6 +140,7 @@ class _MainNavigationState extends State<MainNavigation> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         selectedItemColor: kIndigo,
+        unselectedItemColor: Colors.grey,
         backgroundColor: Colors.white,
         type: BottomNavigationBarType.fixed,
         items: [
@@ -146,13 +152,14 @@ class _MainNavigationState extends State<MainNavigation> {
             icon: Icon(Icons.add_circle_outline_rounded, size: 38),
             label: "Scanner",
           ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              isController
-                  ? Icons.admin_panel_settings_rounded
-                  : Icons.history_rounded,
+          if (isController)
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.admin_panel_settings_rounded),
+              label: "Admin",
             ),
-            label: isController ? "Admin" : "Histo",
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.history_rounded),
+            label: "Histo",
           ),
         ],
       ),
@@ -160,35 +167,31 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- ÉCRAN DASHBOARD DYNAMIQUE ---
+// --- ÉCRAN 1 : DASHBOARD ---
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final f = NumberFormat("#,###", "fr_FR");
-
     return SafeArea(
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('contributions')
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError)
-            return const Center(child: Text("Erreur de chargement"));
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (!snapshot.hasData)
             return const Center(child: CircularProgressIndicator());
 
           double totalCaisse = 0;
           Map<String, int> memberSums = {};
-
           for (var doc in snapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
             final int amount = (data['amount'] ?? 0).toInt();
             if (data['status'] == 'validated') {
               totalCaisse += amount;
-              String uName = data['userName'] ?? '';
-              memberSums[uName] = (memberSums[uName] ?? 0) + amount;
+              memberSums[data['userName']] =
+                  (memberSums[data['userName']] ?? 0) + amount;
             }
           }
 
@@ -261,20 +264,14 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 ...membersList.map((m) {
-                  final int validatedAmount = memberSums[m['name']] ?? 0;
-                  final int rest = (kTargetAmount - validatedAmount).toInt();
-
-                  // CALCUL DU POURCENTAGE
-                  double doublePercent =
-                      (validatedAmount / kTargetAmount) * 100;
-                  int percentage = doublePercent
-                      .toInt(); // On garde un chiffre entier (ex: 17%)
-
+                  final int validated = memberSums[m['name']] ?? 0;
+                  final int rest = (kTargetAmount - validated).toInt();
+                  int percent = ((validated / kTargetAmount) * 100).toInt();
                   return _buildMemberRow(
                     m['init']!,
                     m['name']!,
-                    percentage, // On envoie le pourcentage au lieu du texte
-                    validatedAmount,
+                    percent,
+                    validated,
                     rest < 0 ? 0 : rest,
                     f,
                   );
@@ -283,122 +280,6 @@ class DashboardScreen extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _showDelaySheet(BuildContext context) {
-    final TextEditingController reasonController = TextEditingController();
-    final TextEditingController dateController =
-        TextEditingController(); // Nouveau champ
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 25,
-          right: 25,
-          top: 25,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "SIGNALER UN RETARD",
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 18,
-                color: kDark,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // CHAMP RAISON
-            _buildPopupInput(
-              reasonController,
-              "RAISON DU RETARD",
-              Icons.chat_bubble_outline,
-              maxLines: 2,
-            ),
-            const SizedBox(height: 15),
-
-            // CHAMP DATE PRÉVUE
-            _buildPopupInput(
-              dateController,
-              "DATE PRÉVUE DE PAIEMENT (ex: 15/05)",
-              Icons.calendar_today,
-            ),
-
-            const SizedBox(height: 25),
-            ElevatedButton(
-              onPressed: () async {
-                if (reasonController.text.isEmpty ||
-                    dateController.text.isEmpty)
-                  return;
-
-                await FirebaseFirestore.instance.collection('delays').add({
-                  'userName': currentUserData?['name'],
-                  'reason': reasonController.text,
-                  'expectedDate': dateController.text,
-                  'status': 'reported',
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Retard signalé à Maguid.")),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kIndigo,
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              child: const Text(
-                "ENVOYER L'INFO",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Petit widget d'aide pour le design des inputs dans le popup
-  Widget _buildPopupInput(
-    TextEditingController ctrl,
-    String label,
-    IconData icon, {
-    int maxLines = 1,
-  }) {
-    return TextField(
-      controller: ctrl,
-      maxLines: maxLines,
-      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 20, color: kIndigo),
-        filled: true,
-        fillColor: kSlateBg,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
-        ),
       ),
     );
   }
@@ -468,7 +349,7 @@ class DashboardScreen extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: (total / kTargetAmount).clamp(0.0, 1.0),
+              value: (total / 250000).clamp(0.0, 1.0),
               minHeight: 8,
               backgroundColor: kSlateBg,
               valueColor: const AlwaysStoppedAnimation<Color>(kIndigo),
@@ -480,9 +361,8 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildDelay(BuildContext context) {
-    // Ajoute le context ici
     return GestureDetector(
-      onTap: () => _showDelaySheet(context), // Ouvre le formulaire au clic
+      onTap: () => _showDelaySheet(context),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
@@ -523,24 +403,120 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  void _showDelaySheet(BuildContext context) {
+    final reasonController = TextEditingController();
+    final dateController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 25,
+          right: 25,
+          top: 25,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "SIGNALER UN RETARD",
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+            ),
+            const SizedBox(height: 20),
+            _buildPopupInput(
+              reasonController,
+              "RAISON DU RETARD",
+              Icons.chat_bubble_outline,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 15),
+            _buildPopupInput(
+              dateController,
+              "DATE PRÉVUE (ex: 15/05)",
+              Icons.calendar_today,
+            ),
+            const SizedBox(height: 25),
+            ElevatedButton(
+              onPressed: () async {
+                if (reasonController.text.isEmpty ||
+                    dateController.text.isEmpty)
+                  return;
+                await FirebaseFirestore.instance.collection('delays').add({
+                  'userName': currentUserData?['name'],
+                  'reason': reasonController.text,
+                  'expectedDate': dateController.text,
+                  'status': 'reported',
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+                await _logActivity(
+                  "${currentUserData?['name']} a signalé un retard pour le ${dateController.text}.",
+                  "delay",
+                );
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kIndigo,
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              child: const Text(
+                "ENVOYER L'INFO",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPopupInput(
+    TextEditingController ctrl,
+    String label,
+    IconData icon, {
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: ctrl,
+      maxLines: maxLines,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20, color: kIndigo),
+        filled: true,
+        fillColor: kSlateBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMemberRow(
     String init,
     String name,
-    int percentage,
+    int percent,
     int amount,
     int rest,
     NumberFormat f,
   ) {
-    // CHOIX DE LA COULEUR SELON LA PROGRESSION
-    Color progressColor;
-    if (percentage >= 100) {
-      progressColor = kEmerald; // Vert si fini
-    } else if (percentage > 0) {
-      progressColor = Colors.orange; // Orange si commencé
-    } else {
-      progressColor = Colors.grey; // Gris si rien payé
-    }
-
+    Color sColor = percent >= 100
+        ? kEmerald
+        : (percent > 0 ? Colors.orange : Colors.grey);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -568,11 +544,10 @@ class DashboardScreen extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-              // AFFICHAGE DU POURCENTAGE
               Text(
-                "$percentage%",
+                "$percent%",
                 style: TextStyle(
-                  color: progressColor,
+                  color: sColor,
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
                 ),
@@ -610,7 +585,7 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// --- ÉCRAN OCR ---
+// --- ÉCRAN 2 : SCANNER ---
 class ReceiptHomePage extends StatefulWidget {
   const ReceiptHomePage({super.key});
   @override
@@ -625,9 +600,21 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
   final _idController = TextEditingController();
   final _amountController = TextEditingController();
   final _recipientController = TextEditingController();
-
   String _status = "Prêt à scanner un reçu...";
   bool _isProcessing = false;
+
+  void _clear() {
+    _issueDateController.clear();
+    _typeController.clear();
+    _senderController.clear();
+    _idController.clear();
+    _amountController.clear();
+    _recipientController.clear();
+    setState(() {
+      _currentImagePath = null;
+      _status = "Prêt.";
+    });
+  }
 
   Future<void> _pickAndProcess() async {
     FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
@@ -637,7 +624,7 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
         _isProcessing = true;
         _status = "Analyse intelligente...";
       });
-      final data = await OCRService.extractData(result.files.single.path!);
+      final data = await OCRService.extractData(_currentImagePath!);
       setState(() {
         _issueDateController.text = data["issue_date"]!;
         _typeController.text = data["type"]!;
@@ -651,96 +638,45 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
     }
   }
 
-  // --- FONCTION POUR VIDER LES CHAMPS ---
-  void _clear() {
-    _issueDateController.clear();
-    _typeController.clear();
-    _senderController.clear();
-    _idController.clear();
-    _amountController.clear();
-    _recipientController.clear();
-    setState(() {
-      _currentImagePath = null;
-      _status = "Prêt à scanner un reçu...";
-    });
-  }
-
   Future<void> _save() async {
-    // Sécurité 1 : Vérifier si l'utilisateur est bien identifié dans ta liste MEMBERS
-    if (currentUserData == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Erreur : Utilisateur non identifié. Reconnectez-vous.",
-          ),
-        ),
-      );
+    if (currentUserData == null ||
+        _amountController.text.isEmpty ||
+        _currentImagePath == null)
       return;
-    }
-
-    if (_amountController.text.isEmpty || _idController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Le montant et l'ID sont obligatoires")),
-      );
-      return;
-    }
-
     setState(() => _isProcessing = true);
-
     try {
-      // 1. Charger l'image originale
-      File imageFile = File(_currentImagePath!);
-      List<int> imageBytes = await imageFile.readAsBytes();
+      File file = File(_currentImagePath!);
+      Uint8List bytes = await file.readAsBytes();
+      img.Image? image = img.decodeImage(bytes);
+      img.Image resized = img.copyResize(image!, width: 800);
+      String base64Img = base64Encode(img.encodeJpg(resized, quality: 70));
 
-      // 2. COMPRESSION (pour être sûr que ça passe dans Firestore gratuitement)
-      img.Image? decodedImage = img.decodeImage(Uint8List.fromList(imageBytes));
-      // On redimensionne l'image (800px de large c'est largement assez pour lire un reçu)
-      img.Image resizedImage = img.copyResize(decodedImage!, width: 800);
-      // On compresse en JPG (qualité 70%)
-      List<int> compressedBytes = img.encodeJpg(resizedImage, quality: 70);
+      int amount =
+          int.tryParse(
+            _amountController.text.replaceAll(RegExp(r'[^0-9]'), ''),
+          ) ??
+          0;
 
-      // 3. Transformer en texte (Base64)
-      String base64Image = base64Encode(compressedBytes);
-
-      // 4. Envoi à Firestore
       await FirebaseFirestore.instance.collection('contributions').add({
         'userId': FirebaseAuth.instance.currentUser?.uid,
         'userName': currentUserData!['name'],
-        'amount':
-            int.tryParse(
-              _amountController.text.replaceAll(RegExp(r'[^0-9]'), ''),
-            ) ??
-            0,
+        'amount': amount,
         'transactionId': _idController.text,
-        'imageRaw': base64Image, // L'image est ici !
+        'imageRaw': base64Img,
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // TODO: Notifications feature - to be implemented later
-      // await NotificationService.showInstantNotification(
-      //   "Reçu bien envoyé ! ",
-      //   "Ta cotisation a été transmise à Maguid pour validation.",
-      // );
+      await _logActivity(
+        "${currentUserData!['name']} a envoyé un reçu de $amount F.",
+        "payment",
+      );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Reçu envoyé pour validation !")),
-        );
-
-        // --- AJOUTE CES LIGNES ICI POUR LA REDIRECTION ---
-        // On cherche le parent MainNavigation et on lui dit d'aller à l'onglet 0
-        final mainNav = context.findAncestorStateOfType<_MainNavigationState>();
-        if (mainNav != null) {
-          mainNav.changeTab(0); // 0 correspond à l'onglet "Board"
-        }
-      }
-
-      // Redirection après succès
       final mainNav = context.findAncestorStateOfType<_MainNavigationState>();
       if (mainNav != null) mainNav.changeTab(0);
+      _clear();
     } catch (e) {
-      print("Erreur réelle : $e");
+      debugPrint("Erreur: $e");
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -759,7 +695,6 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
           ),
         ),
         centerTitle: true,
-        backgroundColor: kSlateBg,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -863,14 +798,14 @@ class _ReceiptHomePageState extends State<ReceiptHomePage> {
   }
 }
 
-// --- ÉCRAN 3 : ADMIN (ESPACE VALIDATION MAGUID) ---
+// --- ÉCRAN 3 : ADMIN (VALIDATION) ---
 class AdminHistoryScreen extends StatelessWidget {
   const AdminHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2, // 2 onglets : Reçus et Retards
+      length: 2,
       child: Scaffold(
         backgroundColor: kSlateBg,
         appBar: AppBar(
@@ -880,28 +815,23 @@ class AdminHistoryScreen extends StatelessWidget {
             "CONTRÔLE",
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
           ),
-          centerTitle: true,
           bottom: const TabBar(
             labelColor: kIndigo,
             unselectedLabelColor: Colors.grey,
             indicatorColor: kIndigo,
             tabs: [
-              Tab(text: "REÇUS À VALIDER"),
-              Tab(text: "RETARDS SIGNALÉS"),
+              Tab(text: "REÇUS"),
+              Tab(text: "RETARDS"),
             ],
           ),
         ),
         body: TabBarView(
-          children: [
-            _buildContributionsTab(), // Ton code actuel avec images
-            _buildDelaysTab(), // Nouvel onglet pour les retards
-          ],
+          children: [_buildContributionsTab(), _buildDelaysTab()],
         ),
       ),
     );
   }
 
-  // --- ONGLET 1 : LES REÇUS (Ton code existant optimisé) ---
   Widget _buildContributionsTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -913,22 +843,75 @@ class AdminHistoryScreen extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
         if (docs.isEmpty)
-          return const Center(child: Text("Aucun reçu à valider 😴"));
-
+          return const Center(child: Text("Tout est validé ! 😴"));
         return ListView.builder(
           padding: const EdgeInsets.all(20),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             final id = docs[index].id;
-            return _buildAdminCard(id, data);
+            return Card(
+              margin: const EdgeInsets.only(bottom: 25),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  if (data['imageRaw'] != null)
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      child: Image.memory(
+                        base64Decode(data['imageRaw']),
+                        height: 300,
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                        color: kDark,
+                        colorBlendMode: BlendMode.dstOver,
+                      ),
+                    ),
+                  ListTile(
+                    title: Text(
+                      data['userName'] ?? "",
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      "${data['amount']} F - ID: ${data['transactionId']}",
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.check_circle,
+                            color: kEmerald,
+                            size: 30,
+                          ),
+                          onPressed: () =>
+                              _update(id, 'validated', data['userName']),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.cancel,
+                            color: Colors.red,
+                            size: 30,
+                          ),
+                          onPressed: () =>
+                              _update(id, 'rejected', data['userName']),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
           },
         );
       },
     );
   }
 
-  // --- ONGLET 2 : LES RETARDS ---
   Widget _buildDelaysTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -939,9 +922,7 @@ class AdminHistoryScreen extends StatelessWidget {
         if (!snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
         final docs = snapshot.data!.docs;
-        if (docs.isEmpty)
-          return const Center(child: Text("Aucun retard signalé."));
-
+        if (docs.isEmpty) return const Center(child: Text("Aucun retard."));
         return ListView.builder(
           padding: const EdgeInsets.all(20),
           itemCount: docs.length,
@@ -955,28 +936,12 @@ class AdminHistoryScreen extends StatelessWidget {
               child: ListTile(
                 contentPadding: const EdgeInsets.all(15),
                 title: Text(
-                  data['userName'] ?? "Membre",
+                  data['userName'] ?? "",
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 5),
-                    Text(
-                      "RAISON : ${data['reason']}",
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      "PAIEMENT PRÉVU : ${data['expectedDate']}",
-                      style: const TextStyle(
-                        color: kIndigo,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                subtitle: Text(
+                  "RAISON: ${data['reason']}\nPRÉVU: ${data['expectedDate']}",
                 ),
-                trailing: const Icon(Icons.info_outline, color: Colors.orange),
               ),
             );
           },
@@ -985,70 +950,99 @@ class AdminHistoryScreen extends StatelessWidget {
     );
   }
 
-  // Widget pour la carte de contribution (avec image Base64)
-  Widget _buildAdminCard(String id, Map<String, dynamic> data) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        children: [
-          if (data['imageRaw'] != null)
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-              child: Image.memory(
-                base64Decode(data['imageRaw']),
-                height: 300,
-                width: double.infinity,
-                fit: BoxFit.contain,
-                color: kDark,
-                colorBlendMode: BlendMode.dstOver,
-              ),
-            ),
-          ListTile(
-            title: Text(
-              data['userName'] ?? "",
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              "${data['amount']} F - ID: ${data['transactionId']}",
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.check_circle,
-                    color: kEmerald,
-                    size: 30,
-                  ),
-                  onPressed: () => _update(id, 'validated'),
+  void _update(String id, String status, String userName) async {
+    await FirebaseFirestore.instance.collection('contributions').doc(id).update(
+      {'status': status, 'updatedAt': FieldValue.serverTimestamp()},
+    );
+    String msg = status == 'validated'
+        ? "Maguid a validé le paiement de $userName."
+        : "Maguid a rejeté le reçu de $userName.";
+    await _logActivity(msg, status == 'validated' ? 'validation' : 'rejection');
+  }
+}
+
+// --- ÉCRAN 4 : FIL D'ACTUALITÉ (HISTO) ---
+class ActivityFeedScreen extends StatelessWidget {
+  const ActivityFeedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kSlateBg,
+      appBar: AppBar(
+        title: const Text(
+          "FIL D'ACTUALITÉ",
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+        ),
+        centerTitle: true,
+        backgroundColor: kSlateBg,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('activities')
+            .orderBy('timestamp', descending: true)
+            .limit(30)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
+          final logs = snapshot.data!.docs;
+          if (logs.isEmpty)
+            return const Center(child: Text("Aucune activité pour le moment."));
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: logs.length,
+            itemBuilder: (context, index) {
+              final data = logs[index].data() as Map<String, dynamic>;
+              IconData icon;
+              Color color;
+              switch (data['type']) {
+                case 'validation':
+                  icon = Icons.check_circle;
+                  color = kEmerald;
+                  break;
+                case 'rejection':
+                  icon = Icons.cancel;
+                  color = Colors.red;
+                  break;
+                case 'delay':
+                  icon = Icons.warning_rounded;
+                  color = Colors.orange;
+                  break;
+                default:
+                  icon = Icons.info_rounded;
+                  color = kIndigo;
+              }
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: kSlateBorder),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
-                  onPressed: () => _update(id, 'rejected'),
+                child: Row(
+                  children: [
+                    Icon(icon, color: color, size: 20),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Text(
+                        data['message'] ?? "",
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: kDark,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
     );
-  }
-
-  void _update(String id, String status) async {
-    FirebaseFirestore.instance.collection('contributions').doc(id).update({
-      'status': status,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    // TODO: Notifications feature - to be implemented later
-    // String titre = status == 'validated' ? "Félicitations ! " : "Reçu Refusé ";
-    // String message = status == 'validated'
-    //     ? "Le paiement a été validé avec succès."
-    //     : "Le reçu ne semble pas conforme. Recommencez.";
-    //
-    // await NotificationService.showInstantNotification(titre, message);
   }
 }
 
@@ -1149,7 +1143,7 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-// --- SERVICE OCR DÉFINITIF (ORANGE MONEY V12) ---
+// --- SERVICE OCR ---
 class OCRService {
   static Future<Map<String, String>> extractData(String path) async {
     final input = InputImage.fromFilePath(path);
@@ -1158,60 +1152,58 @@ class OCRService {
     String text = recognized.text;
     recognizer.close();
 
-    // 1. EXTRACTION DES TÉLÉPHONES
-    Iterable<RegExpMatch> phones = RegExp(
-      r"0[157][\s\d]{8,12}",
+    Iterable<RegExpMatch> allNumbers = RegExp(
+      r"(?:225)?\s?(0[157]\d{8})",
     ).allMatches(text);
-    List<String> pList = phones
-        .map((m) => m.group(0)!.trim().replaceAll(' ', ''))
-        .toList();
+    List<String> validPhones = [];
+    for (var match in allNumbers) {
+      String phone = match.group(1)!;
+      if (!validPhones.contains(phone)) validPhones.add(phone);
+    }
 
-    // 2. EXTRACTION DU NUMÉRO DE TRANSACTION (Version Ultra-Robuste)
-    // On capture tout ce qui ressemble à l'ID, même s'il y a des espaces à l'intérieur
-    RegExp idRegex = RegExp(
-      r"(?:N'|N°|No|N)?\s*((?:PP|CO)[A-Z0-9,\s]{8,})",
-      caseSensitive: false,
-    );
-    String rawID = idRegex.firstMatch(text)?.group(1) ?? "";
-
-    // NETTOYAGE : Enlève les espaces, change les virgules en points, met en majuscules
-    String cleanID = rawID
-        .replaceAll(' ', '')
-        .replaceAll(',', '.')
-        .toUpperCase();
-
-    // 3. EXTRACTION DU MONTANT
-    String amountRaw =
+    String amount =
         RegExp(
-          r"CFA\s*F?\s*(\d+[\s\d]*)",
+          r"(\d{3,})\s*FCFA",
           caseSensitive: false,
         ).firstMatch(text)?.group(1) ??
         "";
+    if (amount.isEmpty)
+      amount =
+          RegExp(
+            r"transféré\s*\n\s*(\d+)",
+            caseSensitive: false,
+          ).firstMatch(text)?.group(1) ??
+          "";
+
+    String transactionID =
+        RegExp(
+          r"((?:PP|CO)\d{6}\.\d{4}\.[A-Z]\d+)",
+          caseSensitive: false,
+        ).firstMatch(text)?.group(1) ??
+        "";
+    String dateValue =
+        RegExp(
+          r"(\d{2}-\d{2}-\d{4}\s?,\s?\d{2}:\d{2})",
+        ).firstMatch(text)?.group(0) ??
+        "";
+
+    String sender = "";
+    String recipient = "";
+    if (validPhones.length >= 2) {
+      recipient = validPhones[0];
+      sender = validPhones[1];
+    } else if (validPhones.length == 1) {
+      sender = validPhones[0];
+    }
 
     return {
-      "issue_date":
-          RegExp(
-            r"Issue date\s*[:]\s*([^\n]+)",
-            caseSensitive: false,
-          ).firstMatch(text)?.group(1)?.trim() ??
-          "",
-      "type":
-          RegExp(
-            r"Type of transaction\s*\n\s*([^\n]+)",
-            caseSensitive: false,
-          ).firstMatch(text)?.group(1)?.trim() ??
-          "",
-      "sender": pList.isNotEmpty ? pList[0] : "",
-      "transaction_id":
-          cleanID, // Maintenant il affichera PP260510.2122.B02254 en entier
-      "transaction_date":
-          RegExp(
-            r"Transaction[\s\S]*?Date\s*([^\n]+)",
-            caseSensitive: false,
-          ).firstMatch(text)?.group(1)?.trim() ??
-          "",
-      "amount": amountRaw.replaceAll(' ', '').trim(),
-      "recipient": pList.length > 1 ? pList[1] : "",
+      "issue_date": dateValue,
+      "type": text.contains("P2P") ? "Transfert P2P" : "Transfert d'argent",
+      "sender": sender,
+      "transaction_id": transactionID.toUpperCase(),
+      "transaction_date": dateValue,
+      "amount": amount.replaceAll(' ', ''),
+      "recipient": recipient,
     };
   }
 }
